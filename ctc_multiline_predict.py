@@ -80,6 +80,7 @@ def decode_image(image):
 
     return ctc_utils.sparse_tensor_to_strs(prediction)
 
+# change the dataset that's read in by changing the name here:
 img = cv2.imread('Data/Example/3_1_blue.png', False)
 print("my image", img.shape) # Print image shape
 height, width = img.shape
@@ -110,14 +111,10 @@ lines = lines_cleaned
 
 str_predictions = []
 
-# x = cv2.imread(args.image,False)
-# print ("x", x.shape)
-# str_predictions.append(decode_image(x)[0])
-
 bar_gap = int((lines[4]-lines[0])/4*2.5)
 
 for c in range(int(len(lines)/5)):
-    # Cropping an image
+    # cropping an image
     start = lines[5*c]-bar_gap
     stop = lines[5*c+4 ]+bar_gap
     if start < 0:
@@ -129,17 +126,15 @@ for c in range(int(len(lines)/5)):
     if show_image:
         cv2.imshow("original", cropped_image)
         cv2.waitKey()  
-    # x = cv2.imread(args.image,False)
     str_predictions.append(decode_image(cropped_image)[0])
     if len(str_predictions) >= 2:
         str_predictions[0] += str_predictions[len(str_predictions)-1]
 
 sender = udp_client.SimpleUDPClient('127.0.0.1', 51241)
 
-# str_predictions = ["clef-C1", "keySignature-EbM", "timeSignature-2/4", "multirest-23", "barline", "rest-quarter", "rest-eighth", "note-Bb4_eighth", "barline",
-#                    "note-Bb4_quarter", "note-G4_eighth", "barline", "note-Eb5_quarter", "note-D5_eighth", "barline", "note-C5_eighth", "note-C5_eighth", "rest-quarter"]
-
 j = 0
+
+# function to translate the readings from the OMR model, to something that Sonic Pi can process and play
 def note_length(l, i):
     global j
     j +=1
@@ -184,29 +179,26 @@ for w in str_predictions[0]:
     print(int2word[w]),
     print('\t'),
 
+
 for w in str_predictions[0]:
     w = int2word[w].split("-")
+    
+    # if the OMR reads in a clef sign, key signature, time signature, barline, or multirest, the information is not sent to Sonic Pi
+    # because Sonic Pi doesn't need to process that information to play the correct notes
     if w[0] == "clef" or w[0] == "keySignature" or w[0] == "timeSignature" or w[0] == "barline" or w[0] == "multirest":
         continue
-    # if w[0] == "multirest":
-    #     sl = int(w[-1])
-    #     am = 0
-    #     pl = "C"
-    #     su = int(w[-1])
+    
+    # if the OMR reads a rest, it will tell Sonic Pi to play the note 'C' at amplitude 0 (no sound)
     if w[0] == "rest":
-        # m = w[1].split("_")
         am = 0
         pl = "C"
         su = note_length(w, 1)
+
+    # if the OMR reads a note, it will send Sonic Pi the note information to play at amplitude 1
     elif w[0] == "note" or w[0] == "gracenote":
         m = w[1].split("_")
         note = list(m[0])
-        # if note[0] == "C" and note[1] == "#":
-        #     note[2] = str(int(note[2]) +1)
-        #     # note[2] = str(note[2])
-        #     note[1] = "s"
-        #     note[0:3] = [''.join(note[0:2])]
-        #     pl = note[0]
+        # Sonic Pi reads as 's' rather than '#', so it's necesarry to change that information before sending
         if note[1] == "#":
             note[1] = "s"
             note[0:3] = [''.join(note[0:3])]
@@ -216,10 +208,9 @@ for w in str_predictions[0]:
         am = 1
         su = note_length(m, 1)
         
-    # su = su/1.3
+    # change the volume of the music by changing the constant after the am variable
     am = am*9
-    # print("send", pl, su, am, "piano")
     sender.send_message('/sci/thing', [pl, su, am, "piano"])
-    # sender.send_message('/sci/thing', ['C', 1, 3, "piano"])
     time.sleep(su)
+
 print("total musical notations decoded:", j)
